@@ -12,6 +12,7 @@ local type = type
 local next = next
 local pairs = pairs
 local MakeDir = MakeDir
+local require = require
 
 local io = io
 local i_open = io.open

@@ -22,7 +22,7 @@ local SetDrawLayer = SetDrawLayer
 local SetViewport = SetViewport
 local SetDrawColor = SetDrawColor
 local DrawImage = DrawImage
-local DrawString
+local DrawString = DrawString
 local unpack = unpack
 local Restart = Restart
 local SpawnProcess = SpawnProcess
@@ -32,6 +32,7 @@ local SetMainObject = SetMainObject
 local LaunchSubScript = LaunchSubScript
 local GetScreenSize = GetScreenSize
 local DrawStringWidth = DrawStringWidth
+local require = require
 
 local io = io
 local i_open = io.open
