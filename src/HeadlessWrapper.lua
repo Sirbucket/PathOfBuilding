@@ -2,6 +2,25 @@
 -- This wrapper allows the program to run headless on any OS (in theory)
 -- It can be run using a standard lua interpreter, although LuaJIT is preferable
 
+-- Globals
+
+local setmetatable = setmetatable
+local loadfile = loadfile
+local pcall = pcall
+local PCall = PCall
+local error = error
+local unpack = unpack
+local print = print
+local dofile = dofile
+
+local table = table
+local t_remove = table.remove
+
+local string = string
+local s_format = string.format
+
+local io = io
+local i_read = io.read
 
 -- Callbacks
 local callbackTable = { }
@@ -111,39 +130,34 @@ function LaunchSubScript(scriptText, funcList, subList, ...) end
 function AbortSubScript(ssID) end
 function IsSubScriptRunning(ssID) end
 function LoadModule(fileName, ...)
-	if not fileName:match("%.lua") then
-		fileName = fileName .. ".lua"
-	end
-	local func, err = loadfile(fileName)
-	if func then
-		return func(...)
-	else
-		error("LoadModule() error loading '"..fileName.."': "..err)
-	end
+	if not fileName:match("%.lua") then fileName = fileName .. ".lua" end
+
+	local func = loadfile(fileName)
+	if func then return func(...) end
+	local err
+	error("LoadModule() error loading '"..fileName.."': "..err)
+
 end
 function PLoadModule(fileName, ...)
-	if not fileName:match("%.lua") then
-		fileName = fileName .. ".lua"
-	end
-	local func, err = loadfile(fileName)
-	if func then
-		return PCall(func, ...)
-	else
-		error("PLoadModule() error loading '"..fileName.."': "..err)
-	end
+	if not fileName:match("%.lua") then fileName = fileName .. ".lua" end
+
+	local func = loadfile(fileName)
+	if func then return PCall(func, ...) end
+	local err
+	error("PLoadModule() error loading '"..fileName.."': "..err)
 end
 function PCall(func, ...)
 	local ret = { pcall(func, ...) }
 	if ret[1] then
-		table.remove(ret, 1)
+		t_remove(ret, 1)
 		return nil, unpack(ret)
-	else
-		return ret[2]
-	end	
+	end
+
+	return ret[2]
 end
 function ConPrintf(fmt, ...)
 	-- Optional
-	print(string.format(fmt, ...))
+	print(s_format(fmt, ...))
 end
 function ConPrintTable(tbl, noRecurse) end
 function ConExecute(cmd) end
@@ -157,9 +171,7 @@ function Exit() end
 local l_require = require
 function require(name)
 	-- Hack to stop it looking for lcurl, which we don't really need
-	if name == "lcurl.safe" then
-		return
-	end
+	if name == "lcurl.safe" then return end
 	return l_require(name)
 end
 
@@ -172,7 +184,7 @@ runCallback("OnFrame") -- Need at least one frame for everything to initialise
 if mainObject.promptMsg then
 	-- Something went wrong during startup
 	print(mainObject.promptMsg)
-	io.read("*l")
+	i_read("*l")
 	return
 end
 

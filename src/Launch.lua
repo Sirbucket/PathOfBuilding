@@ -5,6 +5,43 @@
 -- Program entry point; loads and runs the Main module within a protected environment
 --
 
+--Globals
+local ConExecute = ConExecute
+local ConClear = ConClear
+local SetWindowTitle = SetWindowTitle
+local ConPrintf = ConPrintf
+local LoadModule = LoadModule
+local GetTime = GetTime
+local ipairs = ipairs
+local type = type
+local RenderInit = RenderInit
+local PCall = PCall
+local PLoadModule = PLoadModule
+local IsKeyDown = IsKeyDown
+local SetDrawLayer = SetDrawLayer
+local SetViewport = SetViewport
+local SetDrawColor = SetDrawColor
+local DrawImage = DrawImage
+local DrawString
+local unpack = unpack
+local Restart = Restart
+local SpawnProcess = SpawnProcess
+local GetRuntimePath = GetRuntimePath
+local Exit = Exit
+local SetMainObject = SetMainObject
+local LaunchSubScript = LaunchSubScript
+local GetScreenSize = GetScreenSize
+local DrawStringWidth = DrawStringWidth
+
+local io = io
+local i_open = io.open
+
+local os = os
+local o_remove = os.remove
+
+local string = string
+local s_format = string.format
+
 APP_NAME = "Path of Building"
 
 SetWindowTitle(APP_NAME)
@@ -22,10 +59,11 @@ function launch:OnInit()
 	self.versionPlatform = "?"
 	self.lastUpdateCheck = GetTime()
 	self.subScripts = { }
-	local firstRunFile = io.open("first.run", "r")
+
+	local firstRunFile = i_open("first.run", "r")
 	if firstRunFile then
 		firstRunFile:close()
-		os.remove("first.run")
+		o_remove("first.run")
 		-- This is a fresh installation
 		-- Perform an immediate update to download the latest version
 		ConClear()
@@ -56,7 +94,7 @@ function launch:OnInit()
 		-- Enable dev mode to disable updates and set user path to be the script path
 		self.devMode = true
 	end
-	local installedFile = io.open("installed.cfg", "r")
+	local installedFile = i_open("installed.cfg", "r")
 	if installedFile then
 		self.installedMode = true
 		installedFile:close()
@@ -71,48 +109,40 @@ function launch:OnInit()
 		self:ShowErrMsg("Error loading main script: no object returned")
 	elseif self.main.Init then
 		errMsg = PCall(self.main.Init, self.main)
-		if errMsg then
-			self:ShowErrMsg("In 'Init': %s", errMsg)
-		end
+		if errMsg then self:ShowErrMsg("In 'Init': %s", errMsg) end
 	end
 
-	if not self.devMode and not firstRunFile then
-		-- Run a background update check if developer mode is off
-		self:CheckForUpdate(true)
-	end
+	if self.devMode and firstRunFile then return end
+	-- Run a background update check if developer mode is off
+	self:CheckForUpdate(true)
 end
 
 function launch:CanExit()
-	if self.main and self.main.CanExit and not self.promptMsg then
-		local errMsg, ret = PCall(self.main.CanExit, self.main)
-		if errMsg then
-			self:ShowErrMsg("In 'CanExit': %s", errMsg)
-			return false
-		else
-			return ret
-		end
+	if not (self.main and self.main.CanExit and not self.promptMsg) then return true end
+
+	local errMsg, ret = PCall(self.main.CanExit, self.main)
+	if errMsg then
+		self:ShowErrMsg("In 'CanExit': %s", errMsg)
+		return false
 	end
-	return true
+
+	return ret
 end
 
 function launch:OnExit()
-	if self.main and self.main.Shutdown then
-		PCall(self.main.Shutdown, self.main)
-	end
+	if self.main and self.main.Shutdown then PCall(self.main.Shutdown, self.main) end
 end
 
 function launch:OnFrame()
-	if self.main then
-		if self.main.OnFrame then
-			local errMsg = PCall(self.main.OnFrame, self.main)
-			if errMsg then
-				self:ShowErrMsg("In 'OnFrame': %s", errMsg)
-			end
-		end
+	if self.main and self.main.OnFrame then
+		local errMsg = PCall(self.main.OnFrame, self.main)
+		if errMsg then self:ShowErrMsg("In 'OnFrame': %s", errMsg) end
 	end
+
 	self.devModeAlt = self.devMode and IsKeyDown("ALT")
 	SetDrawLayer(1000)
 	SetViewport()
+
 	if self.promptMsg then
 		local r, g, b = unpack(self.promptCol)
 		self:DrawPopup(r, g, b, "^0%s", self.promptMsg)
@@ -125,10 +155,9 @@ function launch:OnFrame()
 		DrawString(0, screenH/2, "CENTER", 24, "FIXED", self.doRestart)
 		Restart()
 	end
-	if not self.devMode and (GetTime() - self.lastUpdateCheck) > 1000*60*60*12 then
-		-- Do an update check every 12 hours if the user keeps the program open
-		self:CheckForUpdate(true)
-	end
+	if self.devMode and (GetTime() - self.lastUpdateCheck) <= 1000*60*60*12 then return end
+	-- Do an update check every 12 hours if the user keeps the program open
+	self:CheckForUpdate(true)
 end
 
 function launch:OnKeyDown(key, doubleClick)
@@ -139,97 +168,93 @@ function launch:OnKeyDown(key, doubleClick)
 		collectgarbage("collect")
 		ConPrintf("%dkB => %dkB", before, collectgarbage("count"))
 	elseif key == "u" and IsKeyDown("CTRL") then
-		if not self.devMode then
-			self:CheckForUpdate()
-		end
+		if not self.devMode then self:CheckForUpdate() end
 	elseif self.promptMsg then
 		self:RunPromptFunc(key)
 	else
-		if self.main and self.main.OnKeyDown then
-			local errMsg = PCall(self.main.OnKeyDown, self.main, key, doubleClick)
-			if errMsg then
-				self:ShowErrMsg("In 'OnKeyDown': %s", errMsg)
-			end
-		end
+		if not (self.main and self.main.OnKeyDown) then return end
+
+		local errMsg = PCall(self.main.OnKeyDown, self.main, key, doubleClick)
+		if errMsg then self:ShowErrMsg("In 'OnKeyDown': %s", errMsg) end
 	end
 end
 
 function launch:OnKeyUp(key)
-	if not self.promptMsg then
-		if self.main and self.main.OnKeyUp then
-			local errMsg = PCall(self.main.OnKeyUp, self.main, key)
-			if errMsg then
-				self:ShowErrMsg("In 'OnKeyUp': %s", errMsg)
-			end
-		end
-	end
+	if self.promptMsg then return end
+	if not (self.main and self.main.OnKeyUp) then return end
+
+	local errMsg = PCall(self.main.OnKeyUp, self.main, key)
+	if errMsg then self:ShowErrMsg("In 'OnKeyUp': %s", errMsg) end
 end
 
 function launch:OnChar(key)
 	if self.promptMsg then
 		self:RunPromptFunc(key)
-	else
-		if self.main and self.main.OnChar then
-			local errMsg = PCall(self.main.OnChar, self.main, key)
-			if errMsg then
-				self:ShowErrMsg("In 'OnChar': %s", errMsg)
-			end
-		end
+		return
 	end
+
+	if not (self.main and self.main.OnChar) then return end
+	local errMsg = PCall(self.main.OnChar, self.main, key)
+	if errMsg then self:ShowErrMsg("In 'OnChar': %s", errMsg) end
 end
 
 function launch:OnSubCall(func, ...)
-	if func == "UpdateProgress" then
-		self.updateProgress = string.format(...)
-	end
-	if _G[func] then
-		return _G[func](...)
-	end
+	if func == "UpdateProgress" then self.updateProgress = s_format(...) end
+	if _G[func] then return _G[func](...) end
+end
+
+local function SubErrorSwitch(self, input, id, errMsg)
+	local switch = {
+		["UPDATE"] = function(self, errMsg)
+			self:ShowErrMsg("In update thread: %s", errMsg)
+			self.updateCheckRunning = false
+		end,
+		["DOWNLOAD"] = function(self, id)
+			local errMsg = PCall(self.subScripts[id].callback, nil, errMsg)
+			if errMsg then self:ShowErrMsg("In download callback: %s", errMsg) end
+		end
+	}
+
+	return switch[input] and switch[input](self, id, errMsg)
 end
 
 function launch:OnSubError(id, errMsg)
-	if self.subScripts[id].type == "UPDATE" then
-		self:ShowErrMsg("In update thread: %s", errMsg)
-		self.updateCheckRunning = false
-	elseif self.subScripts[id].type == "DOWNLOAD" then
-		local errMsg = PCall(self.subScripts[id].callback, nil, errMsg)
-		if errMsg then
-			self:ShowErrMsg("In download callback: %s", errMsg)
-		end
-	end
+	SubErrorSwitch(self.subScripts[id].type, id, errMsg)
 	self.subScripts[id] = nil
 end
 
-function launch:OnSubFinished(id, ...)
-	if self.subScripts[id].type == "UPDATE" then
+local function SubFinSwitch(self, input, id, ...)
+	local switch = {
+	["UPDATE"] = function(self, ...) 
 		self.updateAvailable, self.updateErrMsg = ...
 		self.updateCheckRunning = false
-		if self.updateCheckBackground and self.updateAvailable == "none" then
-			self.updateAvailable = nil
-		end
-	elseif self.subScripts[id].type == "DOWNLOAD" then
+		if not (self.updateCheckBackground and self.updateAvailable == "none") then return end
+		self.updateAvailable = nil
+	end,
+	["DOWNLOAD"] = function(self, id, ...)
 		local errMsg = PCall(self.subScripts[id].callback, ...)
-		if errMsg then
-			self:ShowErrMsg("In download callback: %s", errMsg)
-		end
-	elseif self.subScripts[id].type == "CUSTOM" then
-		if self.subScripts[id].callback then
-			local errMsg = PCall(self.subScripts[id].callback, ...)
-			if errMsg then
-				self:ShowErrMsg("In subscript callback: %s", errMsg)
-			end
-		end
+		if not errMsg then return end
+		self:ShowErrMsg("In download callback: %s", errMsg)
+	end,
+	["CUSTOM"] = function(self, id, ...)
+		if not self.subScripts[id].callback then return end
+		local errMsg = PCall(self.subScripts[id].callback, ...)
+		if not errMsg then return end
+		self:ShowErrMsg("In subscript callback: %s", errMsg)
 	end
+	}
+
+	return switch[input] and switch[input](self, id, ...)
+end
+
+function launch:OnSubFinished(id, ...)
+	SubFinSwitch(self, self.subScripts[id].type, id, ...)
 	self.subScripts[id] = nil
 end
 
 function launch:RegisterSubScript(id, callback)
-	if id then
-		self.subScripts[id] = {
-			type = "CUSTOM",
-			callback = callback,
-		}
-	end
+	if not id then return end
+	self.subScripts[id] = {type = "CUSTOM", callback = callback,}
 end
 
 function launch:DownloadPage(url, callback, cookies)
@@ -244,6 +269,7 @@ function launch:DownloadPage(url, callback, cookies)
 		easy:setopt_url(url)
 		easy:setopt(curl.OPT_USERAGENT, "Path of Building/]]..self.versionNumber..[[")
 		easy:setopt(curl.OPT_ACCEPT_ENCODING, "")
+
 		if cookies then
 			easy:setopt(curl.OPT_COOKIE, cookies)
 		end
@@ -269,51 +295,48 @@ function launch:DownloadPage(url, callback, cookies)
 			errMsg = "No data returned"
 		end
 		ConPrintf("Download complete. Status: %s", errMsg or "OK")
-		if errMsg then
-			return nil, errMsg
-		else
-			return page
-		end
+		if errMsg then return nil, errMsg end
+		return page
 	]]
 	local id = LaunchSubScript(script, "", "ConPrintf", url, cookies, self.connectionProtocol, self.proxyURL)
-	if id then
-		self.subScripts[id] = {
-			type = "DOWNLOAD",
-			callback = callback
-		}
-	end
+	if not id then return end
+	self.subScripts[id] = {type = "DOWNLOAD", callback = callback}
 end
 
 function launch:ApplyUpdate(mode)
-	if mode == "basic" then
-		-- Need to revert to the basic environment to fully apply the update
-		LoadModule("UpdateApply", "Update/opFile.txt")
-		SpawnProcess(GetRuntimePath()..'/Update', 'UpdateApply.lua Update/opFileRuntime.txt')
-		Exit()
-	elseif mode == "normal" then
-		-- Update can be applied while normal environment is running
-		LoadModule("UpdateApply", "Update/opFile.txt")
-		Restart()
-		self.doRestart = "Updating..."
-	end
+	local switch = {
+		["basic"] = function()
+			-- Need to revert to the basic environment to fully apply the update
+			LoadModule("UpdateApply", "Update/opFile.txt")
+			SpawnProcess(GetRuntimePath()..'/Update', 'UpdateApply.lua Update/opFileRuntime.txt')
+			Exit()
+		end,
+		["normal"] = function()
+			-- Update can be applied while normal environment is running
+			LoadModule("UpdateApply", "Update/opFile.txt")
+			Restart()
+			self.doRestart = "Updating..."
+		end
+	}
+
+	return switch[mode] and switch[mode]()
 end
 
 function launch:CheckForUpdate(inBackground)
-	if self.updateCheckRunning then
-		return
-	end
+	if self.updateCheckRunning then return end
+
 	self.updateCheckBackground = inBackground
 	self.updateMsg = "Initialising..."
 	self.updateProgress = "Checking..."
 	self.lastUpdateCheck = GetTime()
-	local update = io.open("UpdateCheck.lua", "r")
+
+	local update = i_open("UpdateCheck.lua", "r")
 	local id = LaunchSubScript(update:read("*a"), "GetScriptPath,GetRuntimePath,GetWorkDir,MakeDir", "ConPrintf,UpdateProgress", self.connectionProtocol, self.proxyURL)
-	if id then
-		self.subScripts[id] = {
-			type = "UPDATE"
-		}
-		self.updateCheckRunning = true
-	end
+	
+	if not id then update:close() return end
+
+	self.subScripts[id] = {type = "UPDATE"}
+	self.updateCheckRunning = true
 	update:close()
 end
 
@@ -321,24 +344,27 @@ function launch:ShowPrompt(r, g, b, str, func)
 	self.promptMsg = str
 	self.promptCol = {r, g, b}
 	self.promptFunc = func or function(key)
-		if key == "RETURN" or key == "ESCAPE" then
-			return true
-		elseif key == "F5" then
-			self.doRestart = "Restarting..."
-			return true
-		end
+		local switch = {
+			[("RETURN" or "ESCAPE")] = function() return true end,
+			["F5"] = function()
+				self.doRestart = "Restarting..."
+				return true
+			end
+		}
+
+		return switch[key] and switch[key]()
 	end
 end
 
 function launch:ShowErrMsg(fmt, ...)
-	if not self.promptMsg then
-		self:ShowPrompt(1, 0, 0, "^1Error:\n\n^0" .. string.format(fmt, ...) .. "\n\nPress Enter/Escape to Dismiss, or F5 to restart the application.")
-	end
+	if self.promptMsg then return end
+	self:ShowPrompt(1, 0, 0, "^1Error:\n\n^0" .. s_format(fmt, ...) .. "\n\nPress Enter/Escape to Dismiss, or F5 to restart the application.")
 end
 
 function launch:RunPromptFunc(key)
 	local curMsg = self.promptMsg
 	local errMsg, ret = PCall(self.promptFunc, key)
+
 	if errMsg then
 		self:ShowErrMsg("In prompt func: %s", errMsg)
 	elseif ret and self.promptMsg == curMsg then
@@ -350,7 +376,7 @@ function launch:DrawPopup(r, g, b, fmt, ...)
 	local screenW, screenH = GetScreenSize()
 	SetDrawColor(0, 0, 0, 0.5)
 	DrawImage(nil, 0, 0, screenW, screenH)
-	local txt = string.format(fmt, ...)
+	local txt = s_format(fmt, ...)
 	local w = DrawStringWidth(20, "VAR", txt) + 20
 	local h = (#txt:gsub("[^\n]","") + 2) * 20
 	local ox = (screenW - w) / 2
